@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AS ROMA 2025-26 シーズン選手採点</title>
+    <style>
+        :root {
+            --roma-yellow: #F0A30A;
+            --roma-red: #8E1C32;
+            --bg-color: #f9f9f9;
+        }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            background-color: var(--roma-red);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-bottom: 5px solid var(--roma-yellow);
+        }
+        h1 { margin: 0; font-size: 24px; }
+        p.subtitle { margin: 5px 0 0 0; font-size: 14px; color: var(--roma-yellow); font-weight: bold; }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .player-card {
+            background: white;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .player-name {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .score-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        select {
+            padding: 5px 10px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+        }
+        .submit-box {
+            text-align: center;
+            margin: 30px 0;
+        }
+        button {
+            background-color: var(--roma-red);
+            color: white;
+            border: none;
+            padding: 12px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: 0.2s;
+        }
+        button:hover {
+            background-color: #701425;
+            transform: translateY(-1px);
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .message {
+            text-align: center;
+            font-weight: bold;
+            color: #d9534f;
+            margin-top: 10px;
+        }
+
+        /* 管理者エリア */
+        hr { border: 0; border-top: 2px dashed #ccc; margin: 50px 0; }
+        .admin-section {
+            background: #eee;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .admin-section h2 { margin-top: 0; font-size: 18px; color: #555; }
+        .admin-panel { display: none; margin-top: 20px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th { background-color: #f2f2f2; }
+        .average-score { font-weight: bold; color: var(--roma-red); }
+        .admin-input {
+            padding: 6px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>AS ROMA 2025-26 シーズン総括採点</h1>
+        <p class="subtitle">GRAZIE ROMA! あなたの評価を教えてください（3.0 〜 10.0）</p>
+    </header>
+
+    <form id="ratingForm">
+        <div id="playerList"></div>
+        
+        <div class="submit-box">
+            <button type="submit" id="submitBtn">採点を送信する</button>
+            <div id="statusMessage" class="message"></div>
+        </div>
+    </form>
+
+    <hr>
+
+    <div class="admin-section">
+        <h2>管理者用メニュー</h2>
+        <div id="loginBox">
+            <label for="adminPass">パスワード：</label>
+            <input type="password" id="adminPass" class="admin-input" placeholder="パスワードを入力">
+            <button type="button" onclick="checkPassword()" style="padding: 6px 15px; font-size: 14px; background-color: #555; border-radius: 4px;">ログイン</button>
+        </div>
+
+        <div id="adminPanel" class="admin-panel">
+            <h3>集計結果（平均値および投票一覧）</h3>
+            <p>現在の総投票数: <span id="totalVotes">0</span> 件</p>
+            <table id="resultTable">
+                <thead>
+                    <tr>
+                        <th>選手名</th>
+                        <th>平均評点</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 選手リスト
+    const players = [
+        "ミレ・スヴィラル", "ジャンルカ・マンチーニ", "エヴァン・エンディカ", 
+        "マリオ・エルモソ", "ダニエレ・ギラルディ", "ヤン・ジョウコフスキ", 
+        "ウェズレイ", "ゼキ・チェリク", "デフィン・レンシュ", 
+        "コスタス・ツィミカス", "ブライアン・クリスタンテ", "マヌ・コネ", 
+        "ニール・エル・アイナウイ", "ニッコロ・ピジッリ", "ロレンツォ・ペッレグリーニ", 
+        "マティアス・スーレ", "ステファン・エル・シャーラウィ", "パウロ・ディバラ", 
+        "アルテム・ドフビク", "エヴァン・ファーガソン", "ロビニオ・ヴァズ", 
+        "ドニエル・マレン"
+    ];
+
+    // 管理者パスワード設定
+    const ADMIN_PASSWORD = "sptc"; 
+
+    // 初期化処理
+    window.onload = function() {
+        const playerListContainer = document.getElementById('playerList');
+        
+        // 選手カードの動的生成
+        players.forEach((player, index) => {
+            const card = document.createElement('div');
+            card.className = 'player-card';
+            
+            // 3.0から10.0まで0.1刻みのセレクトボックスを作成（3.0スタートに変更）
+            let options = '';
+            for (let score = 3.0; score <= 10.0; score = (score + 0.1)) {
+                const scoreStr = score.toFixed(1);
+                // 3.0をデフォルトの選択状態（selected）にする
+                const selected = (scoreStr === "3.0") ? "selected" : "";
+                options += `<option value="${scoreStr}" ${selected}>${scoreStr}</option>`;
+            }
+            
+            card.innerHTML = `
+                <div class="player-name">${player}</div>
+                <div class="score-selector">
+                    <select name="player_${index}">
+                        ${options}
+                    </select>
+                    <span>点</span>
+                </div>
+            `;
+            playerListContainer.appendChild(card);
+        });
+
+        // すでに投票済みかチェック
+        if (localStorage.getItem('hasVoted') === 'true') {
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('statusMessage').innerText = "あなたはすでに投票済みです（1人1回まで）。";
+        }
+    };
+
+    // 投票送信処理
+    document.getElementById('ratingForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        if (localStorage.getItem('hasVoted') === 'true') {
+            alert("すでに投票されています。");
+            return;
+        }
+
+        // フォームデータ取得
+        const formData = new FormData(this);
+        const vote = {};
+        players.forEach((player, index) => {
+            vote[player] = parseFloat(formData.get(`player_${index}`));
+        });
+
+        // データの保存（ローカルストレージの配列に追加していく擬似的な集計）
+        let allVotes = JSON.parse(localStorage.getItem('allVotes')) || [];
+        allVotes.push(vote);
+        localStorage.setItem('allVotes', JSON.stringify(allVotes));
+
+        // 重複投票フラグを立てる（Chrome/Safariなどブラウザ単位で弾く制御）
+        localStorage.setItem('hasVoted', 'true');
+
+        // 画面更新
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('statusMessage').innerText = "採点ありがとうございました！送信が完了しました。";
+        alert("採点を送信しました！");
+    });
+
+    // 管理者パスワードチェック
+    function checkPassword() {
+        const inputPass = document.getElementById('adminPass').value;
+        if (inputPass === ADMIN_PASSWORD) {
+            document.getElementById('loginBox').style.display = 'none';
+            document.getElementById('adminPanel').style.display = 'block';
+            calculateResults();
+        } else {
+            alert("パスワードが違います。");
+        }
+    }
+
+    // 集計結果の計算
+    function calculateResults() {
+        const allVotes = JSON.parse(localStorage.getItem('allVotes')) || [];
+        document.getElementById('totalVotes').innerText = allVotes.length;
+
+        const tbody = document.querySelector('#resultTable tbody');
+        tbody.innerHTML = '';
+
+        if (allVotes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">まだ投票データがありません。</td></tr>';
+            return;
+        }
+
+        // 各選手の合計点を初期化
+        const totals = {};
+        players.forEach(player => totals[player] = 0);
+
+        // 加算
+        allVotes.forEach(vote => {
+            players.forEach(player => {
+                totals[player] += vote[player] || 3.0;
+            });
+        });
+
+        // 平均を出してテーブルに描画
+        players.forEach(player => {
+            const avg = (totals[player] / allVotes.length).toFixed(2);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${player}</td>
+                <td class="average-score">${avg} 点</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+</script>
+
+</body>
+</html>
