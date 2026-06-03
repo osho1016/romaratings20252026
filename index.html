@@ -278,29 +278,31 @@
         // 二重投稿防止チェック
         if (localStorage.getItem('hasVoted') === 'true') {
             document.getElementById('submitBtn').disabled = true;
-            document.getElementById('statusMessage').innerText = "採点はすでに確定済みです（1人1回まで）。";
+            document.getElementById('statusMessage').innerText = "採点済みです";
         }
     };
 
-    // 点数に応じたグラデーション色を計算する関数 (赤 3.0 〜 黄 6.5 〜 緑 10.0)
+    // 点数に応じたグラデーション色を計算する関数 (修正版：6.0を緑寄りに)
     function getSliderBackground(value) {
         const val = parseFloat(value);
         let r, g, b;
         
-        if (val <= 6.5) {
-            // 3.0(赤) から 6.5(黄) への変化
-            const ratio = (val - 3.0) / (6.5 - 3.0);
+        if (val <= 5.5) {
+            // 3.0(赤) から 5.5(黄色) への変化（赤〜オレンジの範囲を狭く）
+            const ratio = (val - 3.0) / (5.5 - 3.0);
             r = 220;
             g = Math.round(50 + ratio * 150);
             b = 50;
         } else {
-            // 6.5(黄) から 10.0(明るい緑) への変化
-            const ratio = (val - 6.5) / (10.0 - 6.5);
-            r = Math.round(220 - ratio * 180);
-            g = Math.round(200 + ratio * 45);
+            // 5.5(黄色) から 10.0(鮮やかな緑) への変化
+            // これにより、6.0の時点ですでにかなり緑に近い「黄緑」になります
+            const ratio = (val - 5.5) / (10.0 - 5.5);
+            r = Math.round(220 - ratio * 190); // 緑が勝つように赤みを一気に減らす
+            g = Math.round(200 + ratio * 45);  // 緑の明るさをキープ
             b = 50;
         }
-        // スライダーの左側（選択された部分）だけ色を変えるためのグラデーションのパーセンテージ
+        
+        // スライダーの左側だけ色を変えるための計算
         const pct = ((val - 3.0) / (10.0 - 3.0)) * 100;
         return `linear-gradient(to right, rgb(${r},${g},${b}) ${pct}%, #e0e0e0 ${pct}%)`;
     }
