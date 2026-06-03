@@ -98,7 +98,7 @@
             transition: background 0.2s;
         }
         
-        /* スライダーのつまみ(Thumb)のデザイン */
+        /* スライダーのつまみのデザイン */
         .score-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
@@ -268,7 +268,7 @@
 
     <div id="adminPanel" class="admin-panel">
         <h2 style="margin-top:0; font-size: 18px; color: #333; border-bottom: 2px solid var(--roma-red); padding-bottom: 8px;">【管理者専用】集計結果</h2>
-        <p style="font-weight: bold;">現在の総投票（アクセス）者数: <span id="totalVotes" style="color:var(--roma-red); font-size: 18px;">0</span> 名</p>
+        <p style="font-weight: bold;">現在の総投票（アクセス）者数: <span id="totalVotes" style="color:var(--roma-red); font-size: 18px;">読み込み中...</span> 名</p>
         <table id="resultTable">
             <thead>
                 <tr>
@@ -297,6 +297,14 @@
 
     const ADMIN_PASSWORD = "sptc"; 
     const votedState = {}; // 各選手の操作フラグ
+
+    // 【Googleフォーム送信用の設定】
+    const FORM_ACTION_URL = "https://docs.google.com/forms/u/0/d/e/1FAIpQLSe4NdV4nR_IRY2i7mqGZy57oQZVqeoQeJCB0WAYgGZtPQbiHA/formResponse";
+    const ENTRY_TYPE_ID = "entry.1764619448"; // 質問「型」の裏ID
+    const ENTRY_DATA_ID = "entry.841316527"; // 質問「データ」の裏ID
+
+    // 【スプレッドシート読み込み用の設定】
+    const SPREADSHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1UvjuKLE6H2dmaeidH0msKtI9h0GUA6BySFrEoCjvbrU/export?format=csv&gid=1292682014";
 
     window.onload = function() {
         const playerListContainer = document.getElementById('playerList');
@@ -393,7 +401,7 @@
         e.preventDefault();
 
         if (localStorage.getItem('hasVoted') === 'true') {
-            showModal("すでに採点は確定されています");
+            showModal("投票済みです");
             return;
         }
 
@@ -404,42 +412,51 @@
             }
         });
 
-        // 1人も採点していない場合は送信をブロック
         if (unvotedCount === players.length) {
-            alert("最低でも1人以上の選手を採点してください");
+            alert("最低でも1人以上の選手を採点してください。");
             return;
         }
 
-        // 未操作の選手がいる場合、確認ダイアログを表示
         if (unvotedCount > 0) {
             if (!confirm("スライダー未操作の選手がいますが、このまま確定してよろしいですか？\n（※未操作の選手は「採点なし」として処理されます）")) {
-                return; // キャンセルなら戻る
+                return;
             }
         }
 
-        // 【新ロジック】採点データを作成（操作された選手のみ数値を格納し、未操作は null にする）
+        // 採点データオブジェクトを作成
         const vote = {};
         players.forEach((player, index) => {
             if (votedState[index]) {
                 const slider = document.getElementById(`slider_${index}`);
                 vote[player] = parseFloat(slider.value);
             } else {
-                vote[player] = null; // 採点なし
+                vote[player] = null; 
             }
         });
 
-        let allVotes = JSON.parse(localStorage.getItem('allVotes')) || [];
-        allVotes.push(vote);
-        localStorage.setItem('allVotes', JSON.stringify(allVotes));
+        // 【新機能】Googleフォームの裏側にインターネット経由で一括送信
+        const formData = new FormData();
+        formData.append(ENTRY_TYPE_ID, "roma-rating-v1");
+        formData.append(ENTRY_DATA_ID, JSON.stringify(vote)); // JSON文字列に圧縮して1枠に収める
 
-        localStorage.setItem('hasVoted', 'true');
-        document.getElementById('submitBtn').disabled = true;
-        
-        showModal("採点ありがとうございました！");
-        
-        if (document.getElementById('adminPanel').style.display === 'block') {
-            calculateResults();
-        }
+        // 非同期でGoogleフォームへPOST送信
+        fetch(FORM_ACTION_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Googleのセキュリティ制限を回避するおまじない
+            body: formData
+        }).then(() => {
+            // 送信完了後のローカル処理
+            localStorage.setItem('hasVoted', 'true');
+            document.getElementById('submitBtn').disabled = true;
+            showModal("採点ありがとうございました！");
+            
+            if (document.getElementById('adminPanel').style.display === 'block') {
+                calculateResults();
+            }
+        }).catch(err => {
+            console.error("送信エラー:", err);
+            alert("データの送信に失敗しました。電波の良いところで再度お試しください。");
+        });
     });
 
     function openAdminMenu() {
@@ -449,54 +466,93 @@
             calculateResults();
             document.getElementById('adminPanel').scrollIntoView({ behavior: 'smooth' });
         } else if (password !== null) {
-            alert("パスワードが違います");
+            alert("パスワードが違います。");
         }
     }
 
-    // 【新ロジック】平均値の計算と結果描画
+    // 【新機能】Googleスプレッドシートからデータを自動で引っ張ってきて平均点をリアルタイム計算
     function calculateResults() {
-        const allVotes = JSON.parse(localStorage.getItem('allVotes')) || [];
-        document.getElementById('totalVotes').innerText = allVotes.length;
+        document.getElementById('totalVotes').innerText = "読み込み中...";
 
-        const tbody = document.querySelector('#resultTable tbody');
-        tbody.innerHTML = '';
+        // スプレッドシートのCSVデータをリアルタイムに取得
+        // キャッシュを回避するためにタイムスタンプを付与
+        fetch(`${SPREADSHEET_CSV_URL}&t=${new Date().getTime()}`)
+        .then(response => response.text())
+        .then(csvText => {
+            // CSVテキストを行ごとに分解
+            const lines = csvText.split('\n');
+            const allVotes = [];
 
-        if (allVotes.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#999;">まだ投票データがありません</td></tr>';
-            return;
-        }
+            // 1行目はヘッダーなので2行目(i=1)から処理
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                
+                // CSVのカンマ区切りをパース（簡易版）
+                // 3列目(インデックス2)にJSONデータが入っています
+                const columns = lines[i].split(',');
+                if (columns.length < 3) continue;
 
-        // 選手ごとに 合計点 と 実際の投票数 を初期化
-        const totals = {};
-        const voteCounts = {};
-        players.forEach(player => {
-            totals[player] = 0;
-            voteCounts[player] = 0;
-        });
-
-        // データの集計（nullはスキップして、数値がある場合のみ加算＋カウントアップ）
-        allVotes.forEach(vote => {
-            players.forEach(player => {
-                if (vote[player] !== undefined && vote[player] !== null) {
-                    totals[player] += vote[player];
-                    voteCounts[player] += 1;
+                // ダブルクォーテーション等で囲まれている場合を考慮してクリーンアップ
+                let jsonStr = columns.slice(2).join(','); // 3列目以降を統合
+                if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
+                    jsonStr = jsonStr.slice(1, -1).replace(/""/g, '"');
                 }
-            });
-        });
+                jsonStr = jsonStr.trim();
 
-        // テーブルの生成
-        players.forEach(player => {
-            const count = voteCounts[player];
-            // 1票以上入っている場合のみ平均を計算、0票なら「-」を表示
-            const avg = count > 0 ? (totals[player] / count).toFixed(2) + " 点" : "採点なし";
-            
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td style="font-size:14px; font-weight:bold;">${player}</td>
-                <td class="average-score">${avg}</td>
-                <td class="vote-count">${count} 名</td>
-            `;
-            tbody.appendChild(tr);
+                try {
+                    const voteObj = JSON.parse(jsonStr);
+                    allVotes.push(voteObj);
+                } catch (e) {
+                    console.error("パース失敗行:", lines[i], e);
+                }
+            }
+
+            // 画面の総投票者数を更新
+            document.getElementById('totalVotes').innerText = allVotes.length;
+
+            const tbody = document.querySelector('#resultTable tbody');
+            tbody.innerHTML = '';
+
+            if (allVotes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#999;">まだ有効な投票データがありません。</td></tr>';
+                return;
+            }
+
+            // 集計処理
+            const totals = {};
+            const voteCounts = {};
+            players.forEach(player => {
+                totals[player] = 0;
+                voteCounts[player] = 0;
+            });
+
+            allVotes.forEach(vote => {
+                players.forEach(player => {
+                    if (vote[player] !== undefined && vote[player] !== null) {
+                        totals[player] += parseFloat(vote[player]);
+                        voteCounts[player] += 1;
+                    }
+                });
+            });
+
+            // テーブルに描画
+            players.forEach(player => {
+                const count = voteCounts[player];
+                const avg = count > 0 ? (totals[player] / count).toFixed(2) + " 点" : "採点なし";
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:14px; font-weight:bold;">${player}</td>
+                    <td class="average-score">${avg}</td>
+                    <td class="vote-count">${count} 名</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(err => {
+            console.error("集計データの取得エラー:", err);
+            document.getElementById('totalVotes').innerText = "通信エラー";
+            alert("最新の集計データの取得に失敗しました。");
         });
     }
 </script>
